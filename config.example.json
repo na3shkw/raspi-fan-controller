@@ -1,0 +1,10 @@
+{
+    "gpio": {
+        "pin": 18
+    },
+    "pwm": {
+        "frequency": 260000,
+        "thresholds": [50],
+        "duty_rates": [1, 1]
+    }
+}
