@@ -1,2 +1,2 @@
 *.service
-config.json
+*config.json

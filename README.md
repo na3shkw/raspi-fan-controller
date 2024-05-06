@@ -31,9 +31,21 @@ $ sudo systemctl enable pigpiod
 
 ## TODO
 - [ ] CPU温度の閾値とデューティー比の設定の整合性をチェックする
-- [ ] デューティー比を固定してファンを回転させるモードを追加
+- [x] デューティー比を固定してファンを回転させるモードを追加
+
+## デバッグ
+CPU温度に応じたファンの自動制御を行わず、指定したパラメータでファンを回転させます。
+
+1. `$ cp ./debug_config.example.json ./debug_config.json`を実行してデバッグ用の設定ファイルを作成します。
+    - `debug_config.json`が作成されます。
+2. `debug_config.json`でPWM制御に利用するGPIOピン番号などを設定します。
+3. デーモンが既に起動している場合は`$ sudo make daemon.stop`を実行してデーモンを停止します。
+4. `python main.py`を実行してデバッグモードでファンを制御します。
+    - デバッグモードでは`debug_config.json`を定期的に読み込みます。
+    - 標準出力にCPU温度とデューティー比が表示されます。
 
 ## 参考文献
 - [pigpio Python interface](https://abyz.me.uk/rpi/pigpio/python.html)
 - [systemd.service - freedesktop.org](https://www.freedesktop.org/software/systemd/man/systemd.service.html)
 - [4. Configuring Remote GPIO &mdash; GPIO Zero 1.6.2 Documentation](https://gpiozero.readthedocs.io/en/stable/remote_gpio.html)
+- [#517 Hardware PMW function not working on Pi4B revision 1.4](https://github.com/joan2937/pigpio/issues/517)
