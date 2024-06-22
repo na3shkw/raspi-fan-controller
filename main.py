@@ -5,6 +5,8 @@ import re
 import subprocess
 import json
 import time
+
+import fire
 import pigpio
 
 
@@ -62,41 +64,62 @@ def debug():
         time.sleep(2)
 
 
-def main():
+def main(debug=False):
+    """
+    ファン制御を実行する
+
+    Args:
+        debug (bool): デバッグモードを有効にするか
+    """
+    if debug:
+        debug()
+        return
+    if is_daemon_active():
+        print("Daemon is already active.")
+        return
+
     # 設定を読み込み
     with open(CONFIG_FILE, encoding="utf-8") as f:
         config = json.load(f)
 
-    # CPU温度を取得
-    temp = get_cpu_temperature()
-
-    # Duty比を計算
-    duty = None
+    # 温度に対するDuty比のマッピングを線形補完して事前に計算
+    temp_duty_map = {}
+    thresholds = config["pwm"]["thresholds"]
     duty_rates = config["pwm"]["duty_rates"]
-    for i, threshold in enumerate(config["pwm"]["thresholds"]):
-        if temp < threshold:
-            duty = duty_rates[i]
-            break
-    if duty is None:
-        duty = duty_rates[-1]
+    for i in range(len(thresholds) - 1):
+        for temp in range(thresholds[i], thresholds[i + 1]):
+            temp_duty_map[temp] = duty_rates[i] + \
+                (duty_rates[i + 1] - duty_rates[i]) * (temp - thresholds[i]) \
+                / (thresholds[i + 1] - thresholds[i])
 
-    # 周波数を決定
-    # Xサーバーでログインするとデューティー比0.5付近から不安定になるので周波数を試験的に調整
-    frequency = config["pwm"]["frequency"]["default"]
-    if get_pwm_clock() < 200000000:
-        frequency = config["pwm"]["frequency"]["low_clock"]
+    while True:
+        # CPU温度を取得
+        temp = get_cpu_temperature()
+        temp_rounded = round(temp)
 
-    # GPIO設定
-    set_pwm(
-        config["gpio"]["pin"],
-        frequency,
-        duty
-    )
+        # Duty比を決定
+        if temp_rounded in temp_duty_map:
+            duty = temp_duty_map[temp_rounded]
+        elif temp <= thresholds[0]:
+            duty = duty_rates[0]
+        else:
+            duty = duty_rates[-1]
 
-    print(f"temp={temp}'C, duty={duty}, freq={frequency}")
+        # 周波数を決定
+        # Xサーバーでログインするとデューティー比0.5付近から不安定になるので周波数を試験的に調整
+        frequency = config["pwm"]["frequency"]["default"]
+        if get_pwm_clock() < 200000000:
+            frequency = config["pwm"]["frequency"]["low_clock"]
+
+        # GPIO設定
+        set_pwm(
+            config["gpio"]["pin"],
+            frequency,
+            duty
+        )
+
+        print(f"temp={temp}'C, duty={duty}, freq={frequency}")
+        time.sleep(config["interval"])
 
 if __name__ == "__main__":
-    if is_daemon_active():
-        main()
-    else:
-        debug()
+    fire.Fire(main)
