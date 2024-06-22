@@ -43,6 +43,7 @@ def set_pwm(pin, frequency, duty):
         frequency,
         int(1000000 * clamp(duty, 0, 1))
     )
+    pi.stop()
 
 def debug():
     duty_last = None
