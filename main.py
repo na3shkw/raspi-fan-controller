@@ -118,7 +118,7 @@ def main(debug=False):
             duty
         )
 
-        print(f"temp={temp}'C, duty={duty}, freq={frequency}")
+        print(f"temp={temp}'C, duty={round(duty, 2)}, freq={frequency}")
         time.sleep(config["interval"])
 
 if __name__ == "__main__":
