@@ -2,6 +2,7 @@
     "gpio": {
         "pin": 18
     },
+    "interval": 2,
     "pwm": {
         "frequency": 260000,
         "duty": 1

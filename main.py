@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import re
 import subprocess
 import json
@@ -12,6 +13,7 @@ import pigpio
 
 CONFIG_FILE = "./config.json"
 DEBUG_CONFIG_FILE = "./debug_config.json"
+PID_FILE = "fancontrol.pid"
 
 def clamp(num, minimun, maximum):
     return max(minimun, min(maximum, num))
@@ -32,37 +34,52 @@ def get_pwm_clock():
     match = re.search("=(\d+)", exec_cmd("vcgencmd measure_clock pwm"))
     return int(match[1])
 
-def is_daemon_active():
-    match = re.search("Active: ([^\s]+)\s", exec_cmd("make daemon.status"))
-    return match.group(1) == "active"
+def write_pid():
+    try:
+        with open(PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+        print(f"PID file {PID_FILE} created with PID {os.getpid()}", flush=True)
+    except Exception as e:
+        print(f"Failed to write PID file {PID_FILE}: {e}", flush=True)
 
-def set_pwm(pin, frequency, duty):
-    pi = pigpio.pi()
+def is_daemon_active():
+    if os.path.isfile(PID_FILE):
+        with open(PID_FILE, 'r') as f:
+            pid = int(f.read().strip())
+        if os.path.exists(f"/proc/{pid}"):
+            return True
+        else:
+            os.remove(PID_FILE)
+    return False
+
+def set_pwm(pi, pin, frequency, duty):
     pi.hardware_PWM(
         pin,
         frequency,
         int(1000000 * clamp(duty, 0, 1))
     )
-    pi.stop()
 
-def debug():
-    duty_last = None
-    frequency_last = None
-    while True:
-        # 設定を読み込み
-        with open(DEBUG_CONFIG_FILE, encoding="utf-8") as f:
-            config = json.load(f)
-        duty = config["pwm"]["duty"]
-        frequency = config["pwm"]["frequency"]
+def debug_run(pi):
+    try:
+        duty_last = None
+        frequency_last = None
+        while True:
+            # 設定を読み込み
+            with open(DEBUG_CONFIG_FILE, encoding="utf-8") as f:
+                config = json.load(f)
+            duty = config["pwm"]["duty"]
+            frequency = config["pwm"]["frequency"]
 
-        # 前回の設定値と比較
-        if duty != duty_last or frequency != frequency_last:
-            set_pwm(config["gpio"]["pin"], frequency, duty)
-            print(f"duty={duty}, freq={frequency}")
-            duty_last = duty
-            frequency_last = frequency
+            # 前回の設定値と比較
+            if duty != duty_last or frequency != frequency_last:
+                set_pwm(pi, config["gpio"]["pin"], frequency, duty)
+                print(f"duty={duty}, freq={frequency}")
+                duty_last = duty
+                frequency_last = frequency
 
-        time.sleep(2)
+            time.sleep(config["interval"])
+    finally:
+        pi.stop()
 
 
 def main(debug=False):
@@ -72,55 +89,70 @@ def main(debug=False):
     Args:
         debug (bool): デバッグモードを有効にするか
     """
-    if debug:
-        debug()
-        return
+
+    # 重複実行制御
     if is_daemon_active():
-        print("Daemon is already active.")
+        print("Daemon is already active.", flush=True)
+        exit(1)
+
+    pi = pigpio.pi()
+
+    # デバッグモード
+    if debug:
+        debug_run(pi)
         return
 
-    # 設定を読み込み
-    with open(CONFIG_FILE, encoding="utf-8") as f:
-        config = json.load(f)
+    try:
+        write_pid()
 
-    # 温度に対するDuty比のマッピングを線形補完して事前に計算
-    temp_duty_map = {}
-    thresholds = config["pwm"]["thresholds"]
-    duty_rates = config["pwm"]["duty_rates"]
-    for i in range(len(thresholds) - 1):
-        for temp in range(thresholds[i], thresholds[i + 1]):
-            temp_duty_map[temp] = duty_rates[i] + \
-                (duty_rates[i + 1] - duty_rates[i]) * (temp - thresholds[i]) \
-                / (thresholds[i + 1] - thresholds[i])
+        # 設定を読み込み
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            config = json.load(f)
 
-    while True:
-        # CPU温度を取得
-        temp = get_cpu_temperature()
-        temp_rounded = round(temp)
+        # 温度に対するDuty比のマッピングを線形補完して事前に計算
+        temp_duty_map = {}
+        thresholds = config["pwm"]["thresholds"]
+        duty_rates = config["pwm"]["duty_rates"]
+        for i in range(len(thresholds) - 1):
+            for temp in range(thresholds[i], thresholds[i + 1]):
+                temp_duty_map[temp] = duty_rates[i] + \
+                    (duty_rates[i + 1] - duty_rates[i]) * (temp - thresholds[i]) \
+                    / (thresholds[i + 1] - thresholds[i])
 
-        # Duty比を決定
-        if temp_rounded in temp_duty_map:
-            duty = temp_duty_map[temp_rounded]
-        elif temp <= thresholds[0]:
-            duty = duty_rates[0]
-        else:
-            duty = duty_rates[-1]
+        while True:
+            # CPU温度を取得
+            temp = get_cpu_temperature()
+            temp_rounded = round(temp)
 
-        # 周波数を決定
-        # Xサーバーでログインするとデューティー比0.5付近から不安定になるので周波数を試験的に調整
-        frequency = config["pwm"]["frequency"]["default"]
-        if get_pwm_clock() < 200000000:
-            frequency = config["pwm"]["frequency"]["low_clock"]
+            # Duty比を決定
+            if temp_rounded in temp_duty_map:
+                duty = temp_duty_map[temp_rounded]
+            elif temp <= thresholds[0]:
+                duty = duty_rates[0]
+            else:
+                duty = duty_rates[-1]
 
-        # GPIO設定
-        set_pwm(
-            config["gpio"]["pin"],
-            frequency,
-            duty
-        )
+            # 周波数を決定
+            # Xサーバーでログインするとデューティー比0.5付近から不安定になるので周波数を試験的に調整
+            frequency = config["pwm"]["frequency"]["default"]
+            if get_pwm_clock() < 200000000:
+                frequency = config["pwm"]["frequency"]["low_clock"]
 
-        print(f"temp={temp}'C, duty={round(duty, 2)}, freq={frequency}")
-        time.sleep(config["interval"])
+            # GPIO設定
+            set_pwm(
+                pi,
+                config["gpio"]["pin"],
+                frequency,
+                duty
+            )
+
+            print(f"temp={temp}'C, duty={round(duty, 2)}, freq={frequency}", flush=True)
+            time.sleep(config["interval"])
+    finally:
+        pi.stop()
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+            print(f"PID file {PID_FILE} removed", flush=True)
 
 if __name__ == "__main__":
     fire.Fire(main)
