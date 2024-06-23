@@ -81,6 +81,25 @@ def debug_run(pi):
     finally:
         pi.stop()
 
+def check_pwm_params(config):
+    """
+    PWM制御の設定値が正しいかチェックする
+    
+    Args:
+        config (dict): 設定値
+    """
+    thresholds = config["pwm"]["thresholds"]
+    duty_rates = config["pwm"]["duty_rates"]
+
+    # 閾値の個数はDuty比の個数より1つ少ない
+    if len(thresholds) != len(duty_rates) - 1:
+        raise ValueError("The number of thresholds must be one less than the number of duty rates.")
+    # 閾値は昇順に並んでいる
+    if thresholds != sorted(thresholds):
+        raise ValueError("Thresholds must be in ascending order.")
+    # Duty比は0以上1以下
+    if any(duty < 0 or duty > 1 for duty in duty_rates):
+        raise ValueError("Duty rates must be between 0 and 1.")
 
 def main(debug=False):
     """
@@ -108,6 +127,9 @@ def main(debug=False):
         # 設定を読み込み
         with open(CONFIG_FILE, encoding="utf-8") as f:
             config = json.load(f)
+
+        # PWM制御の設定値が正しいかチェック
+        check_pwm_params(config)
 
         # 温度に対するDuty比のマッピングを線形補完して事前に計算
         temp_duty_map = {}
