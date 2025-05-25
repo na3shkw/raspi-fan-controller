@@ -1,11 +1,15 @@
 #!/bin/bash
 
-# Make link to Python
-sudo ln -s /usr/local/python/current/bin/python /usr/bin/python
+# Install uv
+pip install uv==0.7.8
+
+# Install the requirements
+cd /workspaces/raspi-fan-controller
+make uv.init
 
 # Install the mock vcgencmd
 EXECUTABLE=/workspaces/raspi-fan-controller/mock/vcgencmd/vcgencmd_mock.py
-DEST_DIR=/home/vscode/.local/bin
+DEST_DIR=$HOME/.local/bin
 DEST_PATH="$DEST_DIR/vcgencmd"
 
 mkdir -p "$DEST_DIR"

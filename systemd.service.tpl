@@ -3,7 +3,7 @@ Description=Fan Controller
 
 [Service]
 Type=simple
-ExecStart=${FAN_CONTROLLER_DIR}/main.py
+ExecStart=${FAN_CONTROLLER_DIR}/.venv/bin/python ${FAN_CONTROLLER_DIR}/main.py
 WorkingDirectory=${FAN_CONTROLLER_DIR}
 User=${USER}
 StandardOutput=journal
