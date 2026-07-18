@@ -2,7 +2,7 @@
 
 ## 概要
 Raspberry PiのファンをPWM制御するためのコントローラ―です。
-システムの起動後にデーモンとして常駐し、30秒に一度の間隔でCPU温度に応じてファンの回転速度を制御します。
+システムの起動後にデーモンとして常駐し、`config.json`の`interval`（秒）で指定した間隔でCPU温度に応じてファンの回転速度を制御します。
 
 ## システム要件
 [pigpio](https://abyz.me.uk/rpi/pigpio/index.html)と[uv](https://docs.astral.sh/uv/)が必要です。

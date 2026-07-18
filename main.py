@@ -32,12 +32,9 @@ def get_pwm_clock():
     return int(match[1])
 
 def write_pid():
-    try:
-        with open(PID_FILE, 'w') as f:
-            f.write(str(os.getpid()))
-        print(f"PID file {PID_FILE} created with PID {os.getpid()}", flush=True)
-    except Exception as e:
-        print(f"Failed to write PID file {PID_FILE}: {e}", flush=True)
+    with open(PID_FILE, 'w') as f:
+        f.write(str(os.getpid()))
+    print(f"PID file {PID_FILE} created with PID {os.getpid()}", flush=True)
 
 def is_daemon_active():
     if os.path.isfile(PID_FILE):
@@ -57,26 +54,23 @@ def set_pwm(pi, pin, frequency, duty):
     )
 
 def debug_run(pi):
-    try:
-        duty_last = None
-        frequency_last = None
-        while True:
-            # 設定を読み込み
-            with open(DEBUG_CONFIG_FILE, encoding="utf-8") as f:
-                config = json.load(f)
-            duty = config["pwm"]["duty"]
-            frequency = config["pwm"]["frequency"]
+    duty_last = None
+    frequency_last = None
+    while True:
+        # 設定を読み込み
+        with open(DEBUG_CONFIG_FILE, encoding="utf-8") as f:
+            config = json.load(f)
+        duty = config["pwm"]["duty"]
+        frequency = config["pwm"]["frequency"]
 
-            # 前回の設定値と比較
-            if duty != duty_last or frequency != frequency_last:
-                set_pwm(pi, config["gpio"]["pin"], frequency, duty)
-                print(f"duty={duty}, freq={frequency}")
-                duty_last = duty
-                frequency_last = frequency
+        # 前回の設定値と比較
+        if duty != duty_last or frequency != frequency_last:
+            set_pwm(pi, config["gpio"]["pin"], frequency, duty)
+            print(f"duty={duty}, freq={frequency}")
+            duty_last = duty
+            frequency_last = frequency
 
-            time.sleep(config["interval"])
-    finally:
-        pi.stop()
+        time.sleep(config["interval"])
 
 def check_pwm_params(config):
     """
@@ -87,6 +81,7 @@ def check_pwm_params(config):
     """
     thresholds = config["pwm"]["thresholds"]
     duty_rates = config["pwm"]["duty_rates"]
+    frequency = config["pwm"]["frequency"]
 
     # 閾値の個数はDuty比の個数より1つ少ない
     if len(thresholds) != len(duty_rates) - 1:
@@ -94,9 +89,15 @@ def check_pwm_params(config):
     # 閾値は昇順に並んでいる
     if thresholds != sorted(thresholds):
         raise ValueError("Thresholds must be in ascending order.")
+    # 閾値は整数
+    if any(not isinstance(threshold, int) for threshold in thresholds):
+        raise TypeError("Thresholds must be integers.")
     # Duty比は0以上1以下
     if any(duty < 0 or duty > 1 for duty in duty_rates):
         raise ValueError("Duty rates must be between 0 and 1.")
+    # frequencyはdefault/low_clockを持つオブジェクト
+    if not isinstance(frequency, dict) or "default" not in frequency or "low_clock" not in frequency:
+        raise ValueError("pwm.frequency must be an object with 'default' and 'low_clock' keys.")
 
 def main(debug=False):
     """
@@ -108,18 +109,18 @@ def main(debug=False):
 
     # 重複実行制御
     if is_daemon_active():
-        print("Daemon is already active.", flush=True)
+        print("Fan controller is already running.", flush=True)
         exit(1)
 
     pi = pigpio.pi()
 
-    # デバッグモード
-    if debug:
-        debug_run(pi)
-        return
-
     try:
         write_pid()
+
+        # デバッグモード
+        if debug:
+            debug_run(pi)
+            return
 
         # 設定を読み込み
         with open(CONFIG_FILE, encoding="utf-8") as f:

@@ -4,7 +4,10 @@
     },
     "interval": 5,
     "pwm": {
-        "frequency": 260000,
+        "frequency": {
+            "default": 260000,
+            "low_clock": 130000
+        },
         "thresholds": [50],
         "duty_rates": [1, 1]
     }
