@@ -12,8 +12,8 @@ CONFIG_FILE = "./config.json"
 DEBUG_CONFIG_FILE = "./debug_config.json"
 PID_FILE = "fancontrol.pid"
 
-def clamp(num, minimun, maximum):
-    return max(minimun, min(maximum, num))
+def clamp(num, minimum, maximum):
+    return max(minimum, min(maximum, num))
 
 def exec_cmd(command):
     result = subprocess.run(
@@ -75,29 +75,76 @@ def debug_run(pi):
 def check_pwm_params(config):
     """
     PWM制御の設定値が正しいかチェックする
-    
+
     Args:
         config (dict): 設定値
     """
-    thresholds = config["pwm"]["thresholds"]
-    duty_rates = config["pwm"]["duty_rates"]
+    curve = config["pwm"]["curve"]
     frequency = config["pwm"]["frequency"]
 
-    # 閾値の個数はDuty比の個数より1つ少ない
-    if len(thresholds) != len(duty_rates) - 1:
-        raise ValueError("The number of thresholds must be one less than the number of duty rates.")
-    # 閾値は昇順に並んでいる
-    if thresholds != sorted(thresholds):
-        raise ValueError("Thresholds must be in ascending order.")
-    # 閾値は整数
-    if any(not isinstance(threshold, int) for threshold in thresholds):
-        raise TypeError("Thresholds must be integers.")
-    # Duty比は0以上1以下
-    if any(duty < 0 or duty > 1 for duty in duty_rates):
-        raise ValueError("Duty rates must be between 0 and 1.")
+    # カーブは1点以上
+    if len(curve) < 1:
+        raise ValueError("pwm.curve must have at least one point.")
+    # 各点はtemperature/dutyを持つ
+    if any("temperature" not in point or "duty" not in point for point in curve):
+        raise ValueError("Each point in pwm.curve must have 'temperature' and 'duty' keys.")
+    # temperatureは整数
+    if any(not isinstance(point["temperature"], int) for point in curve):
+        raise TypeError("temperature must be an integer.")
+    # dutyは0以上1以下
+    if any(point["duty"] < 0 or point["duty"] > 1 for point in curve):
+        raise ValueError("duty must be between 0 and 1.")
+    # temperatureは昇順に並んでいる（重複不可）
+    temperatures = [point["temperature"] for point in curve]
+    if temperatures != sorted(set(temperatures)):
+        raise ValueError("temperature must be in strictly ascending order.")
     # frequencyはdefault/low_clockを持つオブジェクト
     if not isinstance(frequency, dict) or "default" not in frequency or "low_clock" not in frequency:
         raise ValueError("pwm.frequency must be an object with 'default' and 'low_clock' keys.")
+
+def build_temp_duty_map(curve):
+    """
+    温度に対するDuty比のマッピングを線形補完して事前に計算する
+
+    Args:
+        curve (list): {temperature, duty}のリスト（temperature昇順）
+
+    Returns:
+        tuple: (temperatures, duties, temp_duty_map)
+    """
+    temperatures = [point["temperature"] for point in curve]
+    duties = [point["duty"] for point in curve]
+
+    temp_duty_map = {}
+    for i in range(len(temperatures) - 1):
+        for temp in range(temperatures[i], temperatures[i + 1]):
+            temp_duty_map[temp] = duties[i] + \
+                (duties[i + 1] - duties[i]) * (temp - temperatures[i]) \
+                / (temperatures[i + 1] - temperatures[i])
+
+    return temperatures, duties, temp_duty_map
+
+def resolve_duty(temp, temperatures, duties, temp_duty_map):
+    """
+    CPU温度からDuty比を決定する
+
+    Args:
+        temp (float): CPU温度
+        temperatures (list): build_temp_duty_mapが返したtemperatures
+        duties (list): build_temp_duty_mapが返したduties
+        temp_duty_map (dict): build_temp_duty_mapが返したtemp_duty_map
+
+    Returns:
+        float: Duty比
+    """
+    temp_rounded = round(temp)
+
+    if temp_rounded in temp_duty_map:
+        return temp_duty_map[temp_rounded]
+    elif temp <= temperatures[0]:
+        return duties[0]
+    else:
+        return duties[-1]
 
 def main(debug=False):
     """
@@ -130,27 +177,14 @@ def main(debug=False):
         check_pwm_params(config)
 
         # 温度に対するDuty比のマッピングを線形補完して事前に計算
-        temp_duty_map = {}
-        thresholds = config["pwm"]["thresholds"]
-        duty_rates = config["pwm"]["duty_rates"]
-        for i in range(len(thresholds) - 1):
-            for temp in range(thresholds[i], thresholds[i + 1]):
-                temp_duty_map[temp] = duty_rates[i] + \
-                    (duty_rates[i + 1] - duty_rates[i]) * (temp - thresholds[i]) \
-                    / (thresholds[i + 1] - thresholds[i])
+        temperatures, duties, temp_duty_map = build_temp_duty_map(config["pwm"]["curve"])
 
         while True:
             # CPU温度を取得
             temp = get_cpu_temperature()
-            temp_rounded = round(temp)
 
             # Duty比を決定
-            if temp_rounded in temp_duty_map:
-                duty = temp_duty_map[temp_rounded]
-            elif temp <= thresholds[0]:
-                duty = duty_rates[0]
-            else:
-                duty = duty_rates[-1]
+            duty = resolve_duty(temp, temperatures, duties, temp_duty_map)
 
             # 周波数を決定
             # Xサーバーでログインするとデューティー比0.5付近から不安定になるので周波数を試験的に調整

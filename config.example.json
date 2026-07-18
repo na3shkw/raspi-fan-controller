@@ -8,7 +8,10 @@
             "default": 260000,
             "low_clock": 130000
         },
-        "thresholds": [50],
-        "duty_rates": [1, 1]
+        "curve": [
+            { "temperature": 40, "duty": 0.3 },
+            { "temperature": 50, "duty": 0.6 },
+            { "temperature": 60, "duty": 1.0 }
+        ]
     }
 }
