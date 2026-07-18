@@ -4,16 +4,13 @@ daemonPath := /etc/systemd/system/$(daemonName).service
 init:
 	@cp ./config.example.json ./config.json
 	@make service.generate
-	@make uv.init
+	uv sync
 
 service.generate: export FAN_CONTROLLER_DIR := $(shell pwd)
 service.generate:
 ifeq ("$(wildcard ./$(daemonName).service)", "")
 	@cat systemd.service.tpl | envsubst > ./$(daemonName).service
 endif
-
-uv.init:
-	uv sync
 
 daemon.reload:
 	@sudo systemctl daemon-reload

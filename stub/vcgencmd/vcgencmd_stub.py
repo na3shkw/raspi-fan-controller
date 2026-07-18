@@ -1,15 +1,14 @@
-#!/workspaces/raspi-fan-controller/.venv/bin/python
 import json
+from pathlib import Path
+
 import fire
 
-RETURN_VALUE_CONFIG = (
-    "/workspaces/raspi-fan-controller/mock/vcgencmd/return_values.json"
-)
+RETURN_VALUE_CONFIG = Path(__file__).resolve().parent / "return_values.json"
 
 
 class Vcgencmd(object):
     """
-    vcgencmdのモッククラス
+    vcgencmdのスタブクラス
     """
 
     def __init__(self):

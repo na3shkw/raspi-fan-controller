@@ -1,17 +1,16 @@
 #!/bin/bash
+cd "$WORKSPACE_FOLDER"
 
 # Install uv
-pip install uv==0.7.8
+curl -LsSf https://astral.sh/uv/0.11.29/install.sh | sh
 
-# Install the requirements
-cd /workspaces/raspi-fan-controller
-make uv.init
+# Install dependency
+uv sync --frozen
 
-# Install the mock vcgencmd
-EXECUTABLE=/workspaces/raspi-fan-controller/mock/vcgencmd/vcgencmd_mock.py
-DEST_DIR=$HOME/.local/bin
-DEST_PATH="$DEST_DIR/vcgencmd"
-
-mkdir -p "$DEST_DIR"
-ln -s "$EXECUTABLE" "$DEST_PATH"
-chmod +x "$DEST_PATH"
+# Install stub vcgencmd
+VCGENCMD="$HOME/.local/bin/vcgencmd"
+cat > "$VCGENCMD" <<EOF
+#!/bin/sh
+exec "$UV_PROJECT_ENVIRONMENT/bin/python" "$WORKSPACE_FOLDER/stub/vcgencmd/vcgencmd_stub.py" "\$@"
+EOF
+chmod +x "$VCGENCMD"
