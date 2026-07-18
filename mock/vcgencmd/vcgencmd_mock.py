@@ -1,5 +1,4 @@
 #!/workspaces/raspi-fan-controller/.venv/bin/python
-# -*- coding: utf-8 -*-
 import json
 import fire
 
