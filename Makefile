@@ -13,8 +13,7 @@ ifeq ("$(wildcard ./$(daemonName).service)", "")
 endif
 
 uv.init:
-	uv venv
-	uv pip install -r requirements.txt
+	uv sync
 
 daemon.reload:
 	@sudo systemctl daemon-reload

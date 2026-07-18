@@ -1,0 +1,9 @@
+[project]
+name = "raspi-fan-controller"
+version = "0.1.0"
+description = "Raspberry PiのファンをPWM制御するためのコントローラー"
+requires-python = ">=3.11"
+dependencies = [
+    "fire==0.6.0",
+    "pigpio==1.78",
+]

@@ -9,7 +9,6 @@ Raspberry PiのファンをPWM制御するためのコントローラ―です�
 
 ```bash
 $ sudo apt install pigpio
-$ pip3 install pigpio
 ```
 
 次のコマンドを実行し、pigpioデーモンがシステムの起動後に開始するようにしておきます。
@@ -37,7 +36,7 @@ CPU温度に応じたファンの自動制御を行わず、指定したパラ�
     - `debug_config.json`が作成されます。
 2. `debug_config.json`でPWM制御に利用するGPIOピン番号などを設定します。
 3. デーモンが既に起動している場合は`sudo make daemon.stop`を実行してデーモンを停止します。
-4. `python main.py --debug`を実行してデバッグモードでファンを制御します。
+4. `uv run main.py --debug`を実行してデバッグモードでファンを制御します。
     - デバッグモードでは`debug_config.json`を定期的に読み込みます。
     - 標準出力にCPU温度とデューティー比が表示されます。
 
